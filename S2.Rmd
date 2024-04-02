@@ -1,0 +1,243 @@
+---
+title: "Estadística para el Análisis Sociológico 2"
+author: 'Wendy Adrianzén y Patricia Lostaunau '
+date: "Ciclo 2024-1"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    theme: cosmo
+    highlight: tango
+---
+
+```{r,echo=FALSE, out.width="40%",fig.align="center"}
+knitr::include_graphics("logoPUCP.png") 
+```
+
+# Sesión 2: Transformación de datos
+
+# **1. Objetivo de la sesión**
+
+A partir de la ENADES, vamos a calcular lo siguiente:
+
+- Proporción de personas encuestadas que se encuentra de acuerdo con la siguiente afirmación: “P03.1 En el Perú todos tienen iguales oportunidades para salir de la pobreza”.
+
+Analizar el porcentaje que se encuentra de acuerdo según:
+
+- Grupo de edad (edadr)
+- Ideología (ideología)
+
+En el caso del cruce con ideología, calcular el porcentaje por área urbana o rural.
+
+# **2. Desarrollo**
+
+Antes de realizar las actividades, nos aseguramos de cargar las librerías que necesitaremos:
+
+```{r, include=FALSE}
+library(rio)
+library(dplyr)
+library(descr)
+library(tidyverse)
+library(survey)
+```
+
+Asimismo, verificamos nuestro lugar de trabajo actual con el siguiente comando:
+
+```{r}
+getwd()
+```
+
+Si debemos modificar la ruta podemos hacerlo a través del menú es: **Session > Set Working Directory > Choose Directory**. Esto abrirá una ventana emergente, donde buscaremos la carpeta en la cual vamos a trabajar, la seleccionamos y apretamos "Open".
+
+
+### **2.1. Abrir bases de datos** 
+
+```{r}
+enades = import ("OXFAM_IEP_ENADES_2022.sav")
+names(enades)
+```
+
+De acuerdo al archivo "Cuestionario-Oxfam-IEP.-ENADES-2022-final" vemos que utilizaremos las siguientes variables: 
+
+- *NC* = Número de cuestionario
+- *edadr* = Edad del entrevistado por rango
+- *sexo* = Sexo del entrevistado
+- *area2* = Área de residencia
+- *ideologia2* = Ideología politica
+- *p03.1* = En el Perú todos tienen iguales oportunidades para salir de la pobreza
+
+Para utilizar las funciones de manipulación de datos es importante tener en cuenta algunos operadores lógicos básicos:
+
+| Operador |           Descripción          |
+|:-----------:|:---------------------------:|
+| ==      |             Igual               |
+| !=      |            Distinto             |
+| <       |            Menor                |
+| <=      |         Menor o igual           |
+| >       |            Mayor                |
+| >=      |         Mayor o igual           |
+| &       |               y                 |
+| %in%    |            dentro               |
+
+
+
+
+### **2.2. Limpieza y adecuación de data** 
+
++ Seleccionar variables
+
+Cuando utilizamos select es posible cambiar los nombres al mismo tiempo que seleccionamos las variables:
+```{r}
+enades = select (enades,NC,edad,edad_rec=edadr,sexo,area2,ideología,ideologia2,p03.1) 
+```
+
++ Revisar la estructura y características de las variables
+
+```{r}
+str(enades$area2)
+str(enades$edad_rec)
+str(enades$p03.1)
+str(enades$ideologia2)
+table(enades$area2)
+table(enades$edad_rec)
+table(enades$p03.1)
+table(enades$ideologia2,enades$ideología)
+```
+
+Como en el ejercicio queremos calcular un porcentaje, debemos verificar si hay valores missing. Del siguiente modo, podemos explorar la información de la cantidad de missing values en la variable:
+
+```{r}
+valores_escala<-table(enades$p03.1)
+cantidad_missing_escala <- sum(is.na(enades$p03.1))
+frecuencia_valores_escala <- c(valores_escala, Missing = cantidad_missing_escala)
+frecuencia_valores_escala
+```
+
+
++ Recodificar variables
+
+```{r}
+enades = enades %>% 
+  mutate(area2 = case_when (area2==1 ~ "Urbana",
+                          area2==2  ~ "Rural"))
+
+enades = enades %>% 
+  mutate(edad_rec = case_when (edad_rec==1 ~ "De 18 a 24 años",
+                          edad_rec==2  ~ "De 25 a 39 años", 
+                          edad_rec==3 ~ "De 40 a más años"))
+
+
+enades = enades %>% 
+  mutate(ideologia2 = case_when (ideologia2 ==1 ~ "Izquierda",
+                          ideologia2==2 ~ "Centro", 
+                          ideologia2==3 ~ "Derecha"))
+
+enades = enades %>% 
+  mutate(p03.1rec = case_when (p03.1 < 5 ~ "De acuerdo",
+                          p03.1 >= 4 & p03.1 < 6 ~ "Ni de acuerdo ni en desacuerdo",
+                          TRUE ~ "En desacuerdo"))
+enades = enades %>% 
+  mutate(p03.1rec2 = case_when (p03.1 < 5 ~ 1, TRUE ~ 0))
+```
+
+
+### **2.3. Agrupar casos**
+
+
+La función summarise() en R se utiliza para realizar resúmenes o agregaciones de datos en un data frame. Aquí hay algunos tipos comunes de funciones que se utilizan con summarise():
+
+1. Funciones de Agregación: Se utilizan para resumir datos numéricos en una única estadística, como la suma, el promedio, la mediana, la desviación estándar, etc.
+Ejemplos: sum(), mean(), median(), sd(), min(), max(), etc.
+
+2. Funciones de Conteo:Se utilizan para contar el número de observaciones en un grupo. 
+Ejemplo: n() cuenta el número de filas, n_distinct() cuenta el número de valores distintos en la variable.
+
+
+
+```{r}
+enades_nacional = enades %>% 
+  summarise(encuestados=n_distinct(NC),acuerdo=sum(p03.1rec2)) %>% 
+  mutate(Porc=(acuerdo/encuestados)*100)%>%
+  mutate(Porc=round(Porc,2))
+enades_nacional
+```
+
+
+```{r}
+enades_edad = enades %>% 
+  group_by(edad_rec)%>%
+  summarise(encuestados=n_distinct(NC),acuerdo=sum(p03.1rec2)) %>% 
+  mutate(Porc=(acuerdo/encuestados)*100)%>%
+  mutate(Porc=round(Porc,2))
+enades_edad
+```
+
+
+```{r}
+enades_ideologia = enades %>% 
+  group_by(ideología)%>%
+  summarise(encuestados=n_distinct(NC),acuerdo=sum(p03.1rec2)) %>% 
+  mutate(Porc=(acuerdo/encuestados)*100)%>%
+  mutate(Porc=round(Porc,2))
+
+enades_ideologia
+
+```
+
+### **2.4. Agregar casos**
+
+La función rbind() se utiliza para combinar dos data frames por filas. Concatena los data frames uno debajo del otro, agregando nuevas filas.Se utiliza cuando se desea agregar nuevas observaciones a un data frame existente o combinar múltiples data frames que tienen la misma estructura.No requiere una columna de unión; simplemente agrega las filas de los data frames de entrada en orden.
+
+
++ Generamos los archivos a agregar (se agregaran casos)
+
+```{r}
+lista <- enades %>% split(.$area2)
+invisible(list2env(lista, envir = .GlobalEnv))
+```
+
++ Luego combinamos los dos dataframe en uno solo
+
+```{r}
+area2 = rbind(Rural, Urbana)
+```
+
+
+### **2.5. Combinar casos (JOIN)**
+
+Este proceso combina data frames con difente información, siempre que tengan un campo común (key), y este no se repita en ninguna otra columna. Existen muchas formas de combinar bases de datos:
+
+```{r,echo=FALSE, out.width="100%",fig.align="center"}
+knitr::include_graphics("merge.png") 
+```
+
+La función left_join() se utiliza para combinar dos data frames por coincidencias en una columna específica. Realiza una unión de tipo "left", lo que significa que todas las filas del primer data frame se conservan y se agregan columnas del segundo data frame basadas en una coincidencia en la columna de unión. Se utiliza cuando se desea agregar información adicional de un segundo data frame a un primero, basado en una columna común entre los dos.
+
+Entonces, rbind() se utiliza para combinar data frames por filas, mientras que left_join() se utiliza para combinar data frames por coincidencia en una columna específica.
+
+
++ Vamos a generar un solo archivo que considere la cantidad de IIEE secundarias Urbanas y Rurales por departamento
+
+```{r}
+Urbana = Urbana %>%   group_by(edad_rec)%>%
+  summarise(encuestados_urbana=n_distinct(NC),acuerdo_urbana=sum(p03.1rec2)) %>% 
+  mutate(Porc_urbana=(acuerdo_urbana/encuestados_urbana)*100)%>%
+  mutate(Porc_urbana=round(Porc_urbana,2))
+
+Rural = Rural %>%   group_by(edad_rec)%>%
+  summarise(encuestados_rural=n_distinct(NC),acuerdo_rural=sum(p03.1rec2)) %>% 
+  mutate(Porc_rural=(acuerdo_rural/encuestados_rural)*100)%>%
+  mutate(Porc_rural=round(Porc_rural,2))
+```
+
++ Aplicamos la combinación de bases de datos con "left_join"
+
+```{r}
+base = left_join(Urbana, Rural, by = c("edad_rec"))
+base[is.na(base)] <- 0
+```
+
+
+
+
